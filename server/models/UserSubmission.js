@@ -1,11 +1,12 @@
 const mongoose = require('mongoose');
 
 /**
- * UserSubmission — stores ONLY masked values.
- * Raw sensitive data is never written to the database.
+ * UserSubmission schema — stores ONLY masked values.
+ * Raw sensitive data must never be persisted.
  */
 const userSubmissionSchema = new mongoose.Schema(
   {
+    // Optional name (not masked by design); trimmed and size-limited
     name: {
       type: String,
       trim: true,
@@ -28,11 +29,12 @@ const userSubmissionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // Timestamp when the server applied masking
     maskedAt: {
       type: Date,
       default: Date.now,
     },
-    // Metadata
+    // Lightweight metadata (not considered sensitive here)
     ipAddress: {
       type: String,
     },
@@ -42,12 +44,12 @@ const userSubmissionSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    // Never expose raw data via JSON — field names make it clear these are masked
+    // Keep virtuals when converting to JSON for convenience
     toJSON: { virtuals: true },
   }
 );
 
-// Virtual: shows a human-readable label for the record
+// Virtual: human-readable summary useful for admins/debugging UIs
 userSubmissionSchema.virtual('summary').get(function () {
   return `${this.name || 'Anonymous'} — submitted ${this.createdAt?.toLocaleDateString()}`;
 });

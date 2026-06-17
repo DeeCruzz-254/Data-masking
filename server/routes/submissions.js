@@ -1,7 +1,19 @@
+/**
+ * /routes/submissions.js
+ * Routes to accept raw form submissions, mask sensitive fields server-side,
+ * persist only masked values, and expose retrieval endpoints for masked records.
+ * IMPORTANT: raw sensitive values must never be stored or returned.
+ */
 const express = require('express');
 const router = express.Router();
+
+// Masking utility (server-side)
 const { maskPayload } = require('../masking');
+
+// Request validation middleware (validates raw input before masking)
 const { validateSubmission } = require('../middleware/validate');
+
+// Mongoose model storing masked data only
 const UserSubmission = require('../models/UserSubmission');
 
 /**
@@ -13,12 +25,13 @@ const UserSubmission = require('../models/UserSubmission');
  */
 router.post('/', validateSubmission, async (req, res) => {
   try {
+    // Destructure raw fields from client request
     const { name, email, phone, nationalId, cardNumber } = req.body;
 
     // Apply all masks — raw values are used ONLY here and then discarded
     const masked = maskPayload({ name, email, phone, nationalId, cardNumber });
 
-    // Persist only the masked payload
+    // Persist only the masked payload and some lightweight metadata
     const submission = await UserSubmission.create({
       ...masked,
       ipAddress: req.ip,
@@ -44,10 +57,12 @@ router.post('/', validateSubmission, async (req, res) => {
  */
 router.get('/', async (req, res) => {
   try {
+    // Simple pagination with sane defaults and hard cap on page size
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(50, parseInt(req.query.limit) || 10);
     const skip  = (page - 1) * limit;
 
+    // Parallelize fetch + count for efficiency
     const [submissions, total] = await Promise.all([
       UserSubmission.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       UserSubmission.countDocuments(),
@@ -69,10 +84,12 @@ router.get('/', async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
   try {
+    // Return a single masked submission by its document id
     const submission = await UserSubmission.findById(req.params.id).lean();
     if (!submission) return res.status(404).json({ error: 'Submission not found.' });
     res.json(submission);
   } catch (err) {
+    // Could be a malformed ObjectId
     res.status(400).json({ error: 'Invalid ID.' });
   }
 });
@@ -83,6 +100,7 @@ router.get('/:id', async (req, res) => {
  */
 router.delete('/:id', async (req, res) => {
   try {
+    // Delete a stored submission (note: protect this in production)
     const result = await UserSubmission.findByIdAndDelete(req.params.id);
     if (!result) return res.status(404).json({ error: 'Submission not found.' });
     res.json({ message: 'Deleted.' });
